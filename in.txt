@@ -1,0 +1,777 @@
+#include <iostream>
+#include <cassert>
+
+#ifndef UNSIGNEDBIGNUMBER_H_INCLUDED
+#define UNSIGNEDBIGNUMBER_H_INCLUDED
+
+typedef unsigned __int32 DATA_DWORD;
+typedef unsigned __int64 DATA_QWORD;
+
+class UnsignedBigNumber {
+public:
+	class SUBTRACTION_UNDERFLOW { };
+	class DIVISION_BY_ZERO { };
+private:
+	unsigned int m_uDWordCount;
+	DATA_DWORD *m_lpdwContent;
+	unsigned int m_uCapacity;
+	unsigned int m_uBufferedSignificantBitCount;
+public:
+	UnsignedBigNumber();
+	UnsignedBigNumber(const UnsignedBigNumber& ubnSrc);
+	UnsignedBigNumber(const DATA_DWORD dwSrc);
+	UnsignedBigNumber(const DATA_DWORD *lpdwSrc, unsigned int uDWordCount);
+	UnsignedBigNumber(const char *lpszSrc);
+	~UnsignedBigNumber();
+private:
+	void _Expand(unsigned int uNewCapacity, bool bFillZero);
+	void _Shrink(unsigned int uNewCapacity, bool bKeepContent);
+	void _ResizeAndDiscardContent(unsigned int uNewCapacity, bool bFillZero);
+	DATA_DWORD _GetAt(unsigned int uIndex) const;
+	DATA_DWORD& _GetAt(unsigned int uIndex);
+	void _Zero();
+public:
+	bool Load(const DATA_DWORD *lpdwSrc, unsigned int uDWordCount);
+	bool Save(char *lpdwDst, unsigned int uBufferSize) const;
+	bool LoadFromHexString(const char *lpszHexString);
+	bool SaveToHexString(char *lpszDst, unsigned int uBufferSize) const;
+
+	static unsigned int GetDWordSignificantBitCount(DATA_DWORD dwWhich);
+	unsigned int GetSignificantBitCount() const;
+	unsigned int GetSignificantDWordCount() const;
+
+	void Trim(bool bShrinkSize);
+	void Unload(bool bShrinkSize);
+
+	void Divide(const UnsignedBigNumber& ubnDivisor, UnsignedBigNumber *lpubnQuotient, UnsignedBigNumber *lpubnRemainder) const;
+	void Divide(const DATA_DWORD dwDivisor, UnsignedBigNumber *lpubnQuotient, DATA_DWORD *lpdwRemainder) const;
+
+	bool TestDWord(DATA_DWORD dwWhich) const;
+	void OrDWord(DATA_DWORD dwWhich);
+	void ExchangeWith(UnsignedBigNumber& ubnWithWhich);
+public:
+	UnsignedBigNumber& operator=(const UnsignedBigNumber& ubnSrc);
+	UnsignedBigNumber& operator=(const DATA_DWORD dwSrc);
+
+	bool operator==(const UnsignedBigNumber& ubnSrc) const;
+	bool operator==(DATA_DWORD dwSrc) const;
+	bool operator>=(const UnsignedBigNumber& ubnSrc) const;
+	bool operator>=(DATA_DWORD dwSrc) const;
+	bool operator>(const UnsignedBigNumber& ubnSrc) const;
+	bool operator>(DATA_DWORD dwSrc) const;
+
+	bool operator!=(const UnsignedBigNumber& ubnSrc) const;
+	bool operator!=(DATA_DWORD dwSrc) const;
+	bool operator<=(const UnsignedBigNumber& ubnSrc) const;
+	bool operator<=(DATA_DWORD dwSrc) const;
+	bool operator<(const UnsignedBigNumber& ubnSrc) const;
+	bool operator<(DATA_DWORD dwSrc) const;
+
+	UnsignedBigNumber& operator<<=(const unsigned int uCount);
+	UnsignedBigNumber& operator>>=(const unsigned int uCount);
+
+	UnsignedBigNumber& operator+=(const UnsignedBigNumber&);
+	UnsignedBigNumber& operator+=(const DATA_DWORD);
+	UnsignedBigNumber& operator-=(const UnsignedBigNumber& ubnSubtrahend);
+	UnsignedBigNumber& operator-=(const DATA_DWORD dwSubtrahend);
+	UnsignedBigNumber& operator*=(const UnsignedBigNumber& ubnMultiplicator);
+	UnsignedBigNumber& operator*=(const DATA_DWORD dwMultiplicator);
+	UnsignedBigNumber& operator/=(const UnsignedBigNumber& ubnDivisor);
+	UnsignedBigNumber& operator/=(const DATA_DWORD dwDivisor);
+	UnsignedBigNumber& operator%=(const UnsignedBigNumber& ubnDivisor);
+	UnsignedBigNumber& operator%=(const DATA_DWORD dwDivisor);
+};
+
+inline UnsignedBigNumber::UnsignedBigNumber(){
+	m_uDWordCount = 1;
+	m_lpdwContent = new DATA_DWORD[1];
+	m_lpdwContent[0] = 0;
+	m_uCapacity = 1;
+	m_uBufferedSignificantBitCount = 1;
+}
+inline UnsignedBigNumber::UnsignedBigNumber(const UnsignedBigNumber& ubnSrc){
+	m_uDWordCount = ubnSrc.m_uDWordCount;
+	m_uCapacity = ubnSrc.m_uDWordCount;
+	m_lpdwContent = new DATA_DWORD[m_uDWordCount];
+	memcpy(m_lpdwContent, ubnSrc.m_lpdwContent, m_uDWordCount * 4);
+	m_uBufferedSignificantBitCount = ubnSrc.m_uBufferedSignificantBitCount;
+}
+inline UnsignedBigNumber::UnsignedBigNumber(const DATA_DWORD dwSrc){
+	m_uDWordCount = 1;
+	m_lpdwContent = new DATA_DWORD[1];
+	m_lpdwContent[0] = dwSrc;
+	m_uCapacity = 1;
+	m_uBufferedSignificantBitCount = 0;
+}
+inline UnsignedBigNumber::UnsignedBigNumber(const DATA_DWORD *lpdwSrc, unsigned int uDWordCount){
+	m_uDWordCount = 1;
+	m_uCapacity = 1;
+	m_lpdwContent = new DATA_DWORD[1];
+	Load(lpdwSrc, uDWordCount);
+}
+inline UnsignedBigNumber::UnsignedBigNumber(const char *lpszSrc){
+	m_uDWordCount = 1;
+	m_uCapacity = 1;
+	m_lpdwContent = new DATA_DWORD[1];
+	LoadFromHexString(lpszSrc);
+}
+inline UnsignedBigNumber::~UnsignedBigNumber(){
+	delete[] m_lpdwContent;
+}
+
+inline void UnsignedBigNumber::_Expand(unsigned int uNewCapacity, bool bFillZero = false){
+	assert(uNewCapacity > 0);
+
+	if(m_uCapacity < uNewCapacity){
+		DATA_DWORD *lpdwNewContent = new DATA_DWORD[uNewCapacity];
+		memcpy(lpdwNewContent, m_lpdwContent, m_uDWordCount * 4);
+		delete[] m_lpdwContent;
+		m_lpdwContent = lpdwNewContent;
+		m_uCapacity = uNewCapacity;
+	}
+	if(bFillZero && uNewCapacity > m_uDWordCount){
+		memset(&m_lpdwContent[m_uDWordCount], 0, (uNewCapacity - m_uDWordCount) * 4);
+	}
+	m_uDWordCount = uNewCapacity;
+}
+inline void UnsignedBigNumber::_Shrink(unsigned int uNewCapacity, bool bKeepContent = true){
+	assert(uNewCapacity > 0);
+
+	if(m_uCapacity > uNewCapacity){
+		DATA_DWORD *lpdwNewContent = new DATA_DWORD[uNewCapacity];
+		if(bKeepContent){
+			m_uDWordCount = (m_uDWordCount > uNewCapacity) ? uNewCapacity : m_uDWordCount;
+			memcpy(lpdwNewContent, m_lpdwContent, m_uDWordCount * 4);
+			m_uBufferedSignificantBitCount = 0;
+		} else {
+			m_uDWordCount = 1;
+			lpdwNewContent[0] = 0;
+			m_uBufferedSignificantBitCount = 1;
+		}
+		delete[] m_lpdwContent;
+		m_lpdwContent = lpdwNewContent;
+		m_uCapacity = uNewCapacity;
+	}
+}
+inline void UnsignedBigNumber::_ResizeAndDiscardContent(unsigned int uNewCapacity, bool bFillZero = false){
+	assert(uNewCapacity > 0);
+
+	if(m_uCapacity != uNewCapacity){
+		delete[] m_lpdwContent;
+		m_lpdwContent = new DATA_DWORD[uNewCapacity];
+		m_uCapacity = uNewCapacity;
+	}
+	m_uDWordCount = uNewCapacity;
+	if(bFillZero){
+		memset(m_lpdwContent, 0, uNewCapacity * 4);
+	}
+}
+
+inline DATA_DWORD UnsignedBigNumber::_GetAt(unsigned int uIndex) const {
+	assert(uIndex < m_uDWordCount);
+	return m_lpdwContent[uIndex];
+}
+inline DATA_DWORD& UnsignedBigNumber::_GetAt(unsigned int uIndex){
+	assert(uIndex < m_uDWordCount);
+	m_uBufferedSignificantBitCount = 0;
+	return m_lpdwContent[uIndex];
+}
+inline void UnsignedBigNumber::_Zero(){
+	memset(m_lpdwContent, 0, m_uDWordCount * 4);
+	m_uBufferedSignificantBitCount = 1;
+}
+
+inline bool UnsignedBigNumber::Load(const DATA_DWORD *lpdwSrc, unsigned int uDWordCount){
+	_Expand(uDWordCount);
+	for(unsigned int i = 0;i < uDWordCount;++i){
+		_GetAt(i) = lpdwSrc[i];
+	}
+	return true;
+}
+inline bool UnsignedBigNumber::Save(char *lpdwDst, unsigned int uBufferSize) const {
+	const unsigned int uBufferCapacity = (uBufferSize + 3) / 4;
+	if(m_uDWordCount >= uBufferCapacity){
+		return false;
+	}
+	for(unsigned int i = 0;i < m_uDWordCount;++i){
+		lpdwDst[i] = _GetAt(i);
+	}
+	return true;
+}
+inline bool UnsignedBigNumber::LoadFromHexString(const char *lpszHexString){
+	const unsigned int uStrlen = strlen(lpszHexString);
+	const unsigned int uNewDWordCount = (uStrlen + 7) / 8;
+	if(uNewDWordCount == 0){
+		return false;
+	}
+	_Expand(uNewDWordCount);
+
+	unsigned char *lpbTranslatedString = new unsigned char[uNewDWordCount * 8];
+	const char *lpbCurrentSrc = lpszHexString + uStrlen;
+	unsigned char *lpbCurrentDst = lpbTranslatedString + uNewDWordCount * 8;
+
+	while(lpbCurrentSrc-- != lpszHexString){
+		if(*lpbCurrentSrc >= '0' && *lpbCurrentSrc <= '9'){
+			*(--lpbCurrentDst) = *lpbCurrentSrc - '0';
+		} else if(*lpbCurrentSrc >= 'a' && *lpbCurrentSrc <= 'f'){
+			*(--lpbCurrentDst) = *lpbCurrentSrc - 'a' + 10;
+		} else if(*lpbCurrentSrc >= 'A' && *lpbCurrentSrc <= 'F'){
+			*(--lpbCurrentDst) = *lpbCurrentSrc - 'A' + 10;
+		}
+	}
+	while(lpbCurrentDst != lpbTranslatedString){
+		*(--lpbCurrentDst) = 0;
+	}
+	for(unsigned int i = uNewDWordCount - 1;i != -1;--i){
+		DATA_DWORD dwCurrentPart = 0;
+		for(unsigned int j = 0;j < 8;++j){
+			dwCurrentPart = (dwCurrentPart << 4) | *(lpbCurrentDst++);
+		}
+		_GetAt(i) = dwCurrentPart;
+	}
+		
+	delete[] lpbTranslatedString;
+	m_uDWordCount = uNewDWordCount;
+	return true;
+}
+inline bool UnsignedBigNumber::SaveToHexString(char *lpszDst, unsigned int uBufferSize) const {
+	const unsigned int uHexDigitCount = (GetSignificantBitCount() + 3) / 4;
+	if(uHexDigitCount >= uBufferSize){
+		return false;
+	}
+	const unsigned int uExtraDWordCount = (uHexDigitCount - 1) / 8;
+	lpszDst += sprintf_s(lpszDst, 9, "%X", _GetAt(uExtraDWordCount));
+	for(unsigned int i = uExtraDWordCount;i-- > 0;){
+		sprintf_s(lpszDst, 9, "%08X", _GetAt(i));
+		lpszDst += 8;
+	}
+	return true;
+}
+
+inline unsigned int UnsignedBigNumber::GetDWordSignificantBitCount(DATA_DWORD dwWhich){
+	if(dwWhich == 0){
+		return 1;
+	}
+	unsigned int uSignificantBitDigitCountInThisDWord = 0;
+	if((dwWhich & 0xFFFF0000) != 0){
+		uSignificantBitDigitCountInThisDWord += 16;
+		dwWhich >>= 16;
+	}
+	if((dwWhich & 0xFF00) != 0){
+		uSignificantBitDigitCountInThisDWord += 8;
+		dwWhich >>= 8;
+	}
+	if((dwWhich & 0xF0) != 0){
+		uSignificantBitDigitCountInThisDWord += 4;
+		dwWhich >>= 4;
+	}
+	if((dwWhich & 0xC) != 0){
+		uSignificantBitDigitCountInThisDWord += 2;
+		dwWhich >>= 2;
+	}
+	if((dwWhich & 0x2) != 0){
+		uSignificantBitDigitCountInThisDWord += 2;
+	} else if((dwWhich & 0x1) != 0){
+		++uSignificantBitDigitCountInThisDWord;
+	}
+	return uSignificantBitDigitCountInThisDWord;
+}
+inline unsigned int UnsignedBigNumber::GetSignificantBitCount() const {
+	if(m_uBufferedSignificantBitCount == 0){
+		unsigned int uExtraSignificantDWordCount = m_uDWordCount - 1;
+		DATA_DWORD dwCurrentDWord;
+		while((dwCurrentDWord = _GetAt(uExtraSignificantDWordCount)) == 0 && uExtraSignificantDWordCount > 0){
+			--uExtraSignificantDWordCount;
+		}
+		const_cast<unsigned int&>(m_uBufferedSignificantBitCount) = uExtraSignificantDWordCount * 32 + GetDWordSignificantBitCount(dwCurrentDWord);
+	}
+	return m_uBufferedSignificantBitCount;
+}
+inline unsigned int UnsignedBigNumber::GetSignificantDWordCount() const {
+	return (GetSignificantBitCount() + 31) / 32;
+}
+
+inline void UnsignedBigNumber::Trim(bool bShrinkSize = false){
+	while(m_uDWordCount > 1 && _GetAt(m_uDWordCount - 1) == 0){
+		--m_uDWordCount;
+	}
+	if(bShrinkSize){
+		_Shrink(m_uDWordCount, true);
+	}
+}
+inline void UnsignedBigNumber::Unload(bool bShrinkSize = false){
+	if(bShrinkSize){
+		_Shrink(1, false);
+	}
+	m_uDWordCount = 1;
+	_GetAt(0) = 0;
+	m_uBufferedSignificantBitCount = 0;
+}
+
+inline void UnsignedBigNumber::Divide(const UnsignedBigNumber& ubnDivisor, UnsignedBigNumber *lpubnQuotient, UnsignedBigNumber *lpubnRemainder) const {
+	if(ubnDivisor == 0){
+		throw DIVISION_BY_ZERO();
+	}
+
+	if(!operator>=(ubnDivisor)){
+		if(lpubnQuotient != NULL){
+			*lpubnQuotient = 0;
+		}
+		if(lpubnRemainder != NULL){
+			*lpubnRemainder = *this;
+		}
+		return;
+	}
+
+	const unsigned int uDividendSignificantBitCount = GetSignificantBitCount();
+	const unsigned int uDivisorSignificantBitCount = ubnDivisor.GetSignificantBitCount();
+	UnsignedBigNumber ubnTempDividend(*this);
+	UnsignedBigNumber ubnTempDivisor(ubnDivisor);
+	const unsigned int uDeltaBitCount = uDividendSignificantBitCount - uDivisorSignificantBitCount;
+	ubnTempDivisor <<= uDeltaBitCount;
+	unsigned int uBitCounter = uDeltaBitCount % 32 + 1;
+	unsigned int uDWordCounter = uDeltaBitCount / 32 + 1;
+	unsigned int uCurrentDWord = 0;
+
+	if(lpubnQuotient != NULL){
+		UnsignedBigNumber ubnTempQuotient;
+		ubnTempQuotient._ResizeAndDiscardContent((uDeltaBitCount + 32) / 32, false);
+
+		do {
+			uCurrentDWord <<= 1;
+			if(ubnTempDividend >= ubnTempDivisor){
+				ubnTempDividend -= ubnTempDivisor;
+				uCurrentDWord |= 1;
+			}
+			if(--uBitCounter == 0){
+				uBitCounter = 32;
+				ubnTempQuotient._GetAt(--uDWordCounter) = uCurrentDWord;
+			}
+			ubnTempDivisor >>= 1;
+		} while(uDWordCounter != 0);
+		*lpubnQuotient = ubnTempQuotient;
+	} else {
+		do {
+			uCurrentDWord <<= 1;
+			if(ubnTempDividend >= ubnTempDivisor){
+				ubnTempDividend -= ubnTempDivisor;
+				uCurrentDWord |= 1;
+			}
+			if(--uBitCounter == 0){
+				uBitCounter = 32;
+				--uDWordCounter;
+			}
+			ubnTempDivisor >>= 1;
+		} while(uDWordCounter != 0);
+	}
+	if(lpubnRemainder != NULL){
+		*lpubnRemainder = ubnTempDividend;
+	}
+}
+inline void UnsignedBigNumber::Divide(const DATA_DWORD dwDivisor, UnsignedBigNumber *lpubnQuotient, DATA_DWORD *lpdwRemainder) const {
+	if(dwDivisor == 0){
+		throw DIVISION_BY_ZERO();
+	}
+
+	if(!operator>=(dwDivisor)){
+		if(lpubnQuotient != NULL){
+			*lpubnQuotient = 0;
+		}
+		if(lpdwRemainder != NULL){
+			*lpdwRemainder = _GetAt(0);
+		}
+		return;
+	}
+
+	const unsigned int uDividendSignificantDWordCount = GetSignificantDWordCount();
+	DATA_QWORD qwCurrentPart = 0;
+	if(lpubnQuotient != NULL){
+		UnsignedBigNumber ubnTempQuotient;
+		ubnTempQuotient._ResizeAndDiscardContent((GetSignificantBitCount() - GetDWordSignificantBitCount(dwDivisor) + 32) / 32, false);
+		for(unsigned int i = uDividendSignificantDWordCount;i-- > 0;){
+			qwCurrentPart = (qwCurrentPart << 32) + _GetAt(i);
+			if(qwCurrentPart >= dwDivisor){
+				ubnTempQuotient._GetAt(i) = (DATA_DWORD)((qwCurrentPart / dwDivisor) & 0xFFFFFFFF);
+				qwCurrentPart %= dwDivisor;
+			}
+		}
+		*lpubnQuotient = ubnTempQuotient;
+	} else {
+		for(unsigned int i = uDividendSignificantDWordCount;i-- > 0;){
+			qwCurrentPart = (qwCurrentPart << 32) + _GetAt(i);
+			if(qwCurrentPart >= dwDivisor){
+				qwCurrentPart %= dwDivisor;
+			}
+		}
+	}
+	if(lpdwRemainder != NULL){
+		*lpdwRemainder = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+	}
+}
+
+inline bool UnsignedBigNumber::TestDWord(DATA_DWORD dwWhich) const {
+	return (_GetAt(0) & dwWhich) != 0;
+}
+inline void UnsignedBigNumber::OrDWord(DATA_DWORD dwWhich){
+	_GetAt(0) |= dwWhich;
+}
+inline void UnsignedBigNumber::ExchangeWith(UnsignedBigNumber& ubnWithWhich){
+	if(&ubnWithWhich != this){
+		unsigned int uTempDWordCount = ubnWithWhich.m_uDWordCount;
+		ubnWithWhich.m_uDWordCount = m_uDWordCount;
+		m_uDWordCount = uTempDWordCount;
+
+		DATA_DWORD *lpdwTempContent = ubnWithWhich.m_lpdwContent;
+		ubnWithWhich.m_lpdwContent = m_lpdwContent;
+		m_lpdwContent = lpdwTempContent;
+
+		unsigned int uTempCapacity = ubnWithWhich.m_uCapacity;
+		ubnWithWhich.m_uCapacity = m_uCapacity;
+		m_uCapacity = uTempCapacity;
+
+		unsigned int uTempBufferedSignificantBitCount = ubnWithWhich.m_uBufferedSignificantBitCount;
+		ubnWithWhich.m_uBufferedSignificantBitCount = m_uBufferedSignificantBitCount;
+		m_uBufferedSignificantBitCount = uTempBufferedSignificantBitCount;
+	}
+}
+
+inline UnsignedBigNumber& UnsignedBigNumber::operator=(const UnsignedBigNumber& ubnSrc){
+	if(&ubnSrc != this){
+		_Expand(ubnSrc.m_uDWordCount);
+		memcpy(m_lpdwContent, ubnSrc.m_lpdwContent, ubnSrc.m_uDWordCount * 4);
+		m_uBufferedSignificantBitCount = ubnSrc.m_uBufferedSignificantBitCount;
+	}
+	return *this;
+}
+inline UnsignedBigNumber& UnsignedBigNumber::operator=(const DATA_DWORD dwSrc){
+	_Shrink(1, false);
+	_GetAt(0) = dwSrc;
+	return *this;
+}
+
+inline bool UnsignedBigNumber::operator==(const UnsignedBigNumber& ubnSrc) const {
+	if(&ubnSrc == this){
+		return true;
+	}
+	const unsigned int uSignificantDWordCount = GetSignificantDWordCount();
+	if(uSignificantDWordCount != ubnSrc.GetSignificantDWordCount()){
+		return false;
+	}
+	for(unsigned int i = uSignificantDWordCount;i-- > 0;){
+		if(_GetAt(i) != ubnSrc._GetAt(i)){
+			return false;
+		}
+	}
+	return true;
+}
+inline bool UnsignedBigNumber::operator==(DATA_DWORD dwSrc) const {
+	if(GetSignificantDWordCount() > 1){
+		return false;
+	}
+	return _GetAt(0) == dwSrc;
+}
+inline bool UnsignedBigNumber::operator>=(const UnsignedBigNumber& ubnSrc) const {
+	if(&ubnSrc == this){
+		return true;
+	}
+	const unsigned int uSignificantDWordCount = GetSignificantDWordCount();
+	if(uSignificantDWordCount > ubnSrc.GetSignificantDWordCount()){
+		return true;
+	} else if (uSignificantDWordCount < ubnSrc.GetSignificantDWordCount()){
+		return false;
+	}
+	for(unsigned int i = uSignificantDWordCount;i-- > 0;){
+		if(_GetAt(i) > ubnSrc._GetAt(i)){
+			return true;
+		} else if(_GetAt(i) < ubnSrc._GetAt(i)){
+			return false;
+		}
+	}
+	return true;
+}
+inline bool UnsignedBigNumber::operator>=(DATA_DWORD dwSrc) const {
+	if(GetSignificantDWordCount() > 1){
+		return true;
+	}
+	return _GetAt(0) >= dwSrc;
+}
+inline bool UnsignedBigNumber::operator>(const UnsignedBigNumber& ubnSrc) const {
+	if(&ubnSrc == this){
+		return false;
+	}
+	const unsigned int uSignificantDWordCount = GetSignificantDWordCount();
+	if(uSignificantDWordCount > ubnSrc.GetSignificantDWordCount()){
+		return true;
+	} else if (uSignificantDWordCount < ubnSrc.GetSignificantDWordCount()){
+		return false;
+	}
+	for(unsigned int i = uSignificantDWordCount;i-- > 0;){
+		if(_GetAt(i) > ubnSrc._GetAt(i)){
+			return true;
+		} else if(_GetAt(i) < ubnSrc._GetAt(i)){
+			return false;
+		}
+	}
+	return false;
+}
+inline bool UnsignedBigNumber::operator>(DATA_DWORD dwSrc) const {
+	if(GetSignificantDWordCount() > 1){
+		return true;
+	}
+	return _GetAt(0) > dwSrc;
+}
+
+inline bool UnsignedBigNumber::operator!=(const UnsignedBigNumber& ubnSrc) const {
+	return !operator==(ubnSrc);
+}
+inline bool UnsignedBigNumber::operator!=(DATA_DWORD dwSrc) const {
+	return !operator==(dwSrc);
+}
+inline bool UnsignedBigNumber::operator<=(const UnsignedBigNumber& ubnSrc) const {
+	return !operator>(ubnSrc);
+}
+inline bool UnsignedBigNumber::operator<=(DATA_DWORD dwSrc) const {
+	return !operator>(dwSrc);
+}
+inline bool UnsignedBigNumber::operator<(const UnsignedBigNumber& ubnSrc) const {
+	return !operator>=(ubnSrc);
+}
+inline bool UnsignedBigNumber::operator<(DATA_DWORD dwSrc) const {
+	return !operator>=(dwSrc);
+}
+
+inline UnsignedBigNumber& UnsignedBigNumber::operator<<=(const unsigned int uCount){
+	if(uCount > 0){
+		const unsigned int uSignificantDWordCount = GetSignificantDWordCount();
+		const unsigned int uShiftDWordCount = uCount / 32;
+		const unsigned char uchShiftBitCount = uCount % 32;
+		const unsigned char uchShiftBackCount = 32 - uchShiftBitCount;
+		_Expand((GetSignificantBitCount() + uCount + 31) / 32, true);
+
+		if(uShiftDWordCount != 0){
+			for(unsigned int i = uSignificantDWordCount;i-- != 0;){
+				_GetAt(i + uShiftDWordCount) = _GetAt(i);
+			}
+			memset(&_GetAt(0), 0, uShiftDWordCount * 4);
+		}
+
+		DATA_DWORD dwCarry = 0;
+		DATA_DWORD dwOldCarry;
+		const DATA_DWORD dwCarryMask = ~(0xFFFFFFFF >> uchShiftBitCount);
+		for(unsigned int i = uShiftDWordCount;i < m_uDWordCount;++i){
+			dwOldCarry = dwCarry;
+			dwCarry = (_GetAt(i) & dwCarryMask) >> uchShiftBackCount;
+			_GetAt(i) = (_GetAt(i) << uchShiftBitCount) | dwOldCarry;
+		}
+	}
+	return *this;
+}
+inline UnsignedBigNumber& UnsignedBigNumber::operator>>=(const unsigned int uCount){
+	if(uCount > 0){
+		const unsigned int uShiftDWordCount = uCount / 32;
+		const unsigned char uchShiftBitCount = uCount % 32;
+		const unsigned char uchShiftBackCount = 32 - uchShiftBitCount;
+
+		for(unsigned int i = 0;i < m_uDWordCount - uShiftDWordCount;++i){
+			_GetAt(i) = _GetAt(i + uShiftDWordCount);
+		}
+		m_uDWordCount -= uShiftDWordCount;
+
+		DATA_DWORD dwBorrow = 0;
+		DATA_DWORD dwOldBorrow;
+		DATA_DWORD dwBorrowMask = ~(0xFFFFFFFF << uchShiftBitCount);
+
+		for(unsigned int i = m_uDWordCount;i-- != 0;){
+			dwOldBorrow = dwBorrow;
+			dwBorrow = (_GetAt(i) & dwBorrowMask) << uchShiftBackCount;
+			_GetAt(i) = (_GetAt(i) >> uchShiftBitCount) | dwOldBorrow;
+		}
+	}
+	return *this;
+}
+
+inline UnsignedBigNumber& UnsignedBigNumber::operator+=(const UnsignedBigNumber& ubnAddend){
+	if(&ubnAddend != this){
+		const unsigned int uMaxDWordCount = (std::max<unsigned int>(GetSignificantBitCount(), ubnAddend.GetSignificantBitCount()) + 32) / 32;
+		const unsigned int uThisDWordCount = GetSignificantDWordCount();
+		const unsigned int uAddendDWordCount = ubnAddend.GetSignificantDWordCount();
+		_Expand(uMaxDWordCount, true);
+
+		DATA_QWORD qwCurrentPart = 0;
+		unsigned int i;
+		if(uThisDWordCount > uAddendDWordCount){
+			for(i = 0;i < uAddendDWordCount;++i){
+				qwCurrentPart += (DATA_QWORD)_GetAt(i) + (DATA_QWORD)ubnAddend._GetAt(i);
+				_GetAt(i) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+				qwCurrentPart >>= 32;
+			}
+		} else {
+			for(i = 0;i < uThisDWordCount;++i){
+				qwCurrentPart += (DATA_QWORD)_GetAt(i) + (DATA_QWORD)ubnAddend._GetAt(i);
+				_GetAt(i) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+				qwCurrentPart >>= 32;
+			}
+			while(i < uAddendDWordCount){
+				qwCurrentPart += (DATA_QWORD)ubnAddend._GetAt(i);
+				_GetAt(i++) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+				qwCurrentPart >>= 32;
+			}
+		}
+		while(qwCurrentPart != 0){
+			qwCurrentPart += (DATA_QWORD)_GetAt(i);
+			_GetAt(i++) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+			qwCurrentPart >>= 32;
+		}
+	} else {
+		operator<<=(1);
+	}
+	return *this;
+}
+
+inline UnsignedBigNumber& UnsignedBigNumber::operator+=(const DATA_DWORD dwAddend){
+	const unsigned int uMaxDWordCount = (std::max<unsigned int>(GetSignificantBitCount(), GetDWordSignificantBitCount(dwAddend)) + 32) / 32;
+	_Expand(uMaxDWordCount, true);
+
+	unsigned int i = 0;
+	DATA_QWORD qwCurrentPart = _GetAt(i) + (DATA_QWORD)dwAddend;
+	_GetAt(i++) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+	qwCurrentPart >>= 32;
+	while(qwCurrentPart != 0){
+		qwCurrentPart += (DATA_QWORD)_GetAt(i);
+		_GetAt(i++) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+		qwCurrentPart >>= 32;
+	}
+	return *this;
+}
+inline UnsignedBigNumber& UnsignedBigNumber::operator-=(const UnsignedBigNumber& ubnSubtrahend){
+	if(!operator>=(ubnSubtrahend)){
+		throw SUBTRACTION_UNDERFLOW();
+	}
+
+	if(&ubnSubtrahend != this){
+		const unsigned int uSubtrahendDWordCount = ubnSubtrahend.GetSignificantDWordCount();
+
+		DATA_QWORD qwCurrentPart = 1;
+		unsigned int i;
+		for(i = 0;i < uSubtrahendDWordCount;++i){
+			qwCurrentPart += (DATA_QWORD)_GetAt(i) + (DATA_QWORD)~ubnSubtrahend._GetAt(i);
+			_GetAt(i) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+			qwCurrentPart >>= 32;
+		}
+		while(qwCurrentPart != 1){
+			qwCurrentPart += (DATA_QWORD)_GetAt(i) + (DATA_QWORD)0xFFFFFFFF;
+			_GetAt(i++) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+			qwCurrentPart >>= 32;
+		}
+	} else {
+		operator=(0);
+	}
+	return *this;
+}
+inline UnsignedBigNumber& UnsignedBigNumber::operator-=(const DATA_DWORD dwSubtrahend){
+	if(!operator>=(dwSubtrahend)){
+		throw SUBTRACTION_UNDERFLOW();
+	}
+
+	unsigned int i = 0;
+	DATA_QWORD qwCurrentPart = _GetAt(i) + (DATA_QWORD)~dwSubtrahend + 1;
+	_GetAt(i++) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+	qwCurrentPart >>= 32;
+	while(qwCurrentPart != 1){
+		qwCurrentPart += (DATA_QWORD)_GetAt(i) + (DATA_QWORD)0xFFFFFFFF;
+		_GetAt(i++) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+		qwCurrentPart >>= 32;
+	}
+	return *this;
+}
+inline UnsignedBigNumber& UnsignedBigNumber::operator*=(const UnsignedBigNumber& ubnMultiplicator){
+	const unsigned int uMultiplicandSignificantDWordCount = GetSignificantDWordCount();
+	const unsigned int uMultiplicatorSignificantDWordCount = ubnMultiplicator.GetSignificantDWordCount();
+	const unsigned int uMaxTempDWordCount = uMultiplicandSignificantDWordCount + uMultiplicatorSignificantDWordCount;
+	const unsigned int uMaxSignificantDWordCount = (GetSignificantBitCount() + ubnMultiplicator.GetSignificantBitCount() + 31) / 32;
+	DATA_QWORD qwCurrentPart;
+	DATA_QWORD *lpqwAccumulationList = new DATA_QWORD[uMaxTempDWordCount];
+	memset(lpqwAccumulationList, 0, uMaxTempDWordCount * 8);
+
+	for(unsigned int i = 0;i < uMultiplicandSignificantDWordCount;++i){
+		for(unsigned int j = 0;j < uMultiplicatorSignificantDWordCount;++j){
+			qwCurrentPart = (DATA_QWORD)_GetAt(i) * (DATA_QWORD)ubnMultiplicator._GetAt(j);
+			if(qwCurrentPart != 0){
+				lpqwAccumulationList[i+j] += qwCurrentPart & 0xFFFFFFFF;
+				lpqwAccumulationList[i+j+1] += qwCurrentPart >> 32;
+			}
+		}
+	}
+		
+	_ResizeAndDiscardContent(uMaxSignificantDWordCount, false);
+	qwCurrentPart = 0;
+	for(unsigned int i = 0;i < uMaxSignificantDWordCount;++i){
+		qwCurrentPart += lpqwAccumulationList[i];
+		_GetAt(i) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+		qwCurrentPart >>= 32;
+	}
+
+	delete[] lpqwAccumulationList;
+	return *this;
+}
+inline UnsignedBigNumber& UnsignedBigNumber::operator*=(const DATA_DWORD dwMultiplicator){
+	const unsigned int uMultiplicandSignificantDWordCount = GetSignificantDWordCount();
+	const unsigned int uMaxTempDWordCount = uMultiplicandSignificantDWordCount + 1;
+	const unsigned int uMaxSignificantDWordCount = (GetSignificantBitCount() + GetDWordSignificantBitCount(dwMultiplicator) + 31) / 32;
+	DATA_QWORD qwCurrentPart;
+	DATA_QWORD *lpqwAccumulationList = new DATA_QWORD[uMaxTempDWordCount];
+	memset(lpqwAccumulationList, 0, uMaxTempDWordCount * 8);
+
+	for(unsigned int i = 0;i < uMultiplicandSignificantDWordCount;++i){
+		qwCurrentPart = (DATA_QWORD)_GetAt(i) * (DATA_QWORD)dwMultiplicator;
+		if(qwCurrentPart != 0){
+			lpqwAccumulationList[i] += qwCurrentPart & 0xFFFFFFFF;
+			lpqwAccumulationList[i+1] += qwCurrentPart >> 32;
+		}
+	}
+		
+	_ResizeAndDiscardContent(uMaxSignificantDWordCount, false);
+	qwCurrentPart = 0;
+	for(unsigned int i = 0;i < uMaxSignificantDWordCount;++i){
+		qwCurrentPart += lpqwAccumulationList[i];
+		_GetAt(i) = (DATA_DWORD)(qwCurrentPart & 0xFFFFFFFF);
+		qwCurrentPart >>= 32;
+	}
+
+	delete[] lpqwAccumulationList;
+	return *this;
+}
+inline UnsignedBigNumber& UnsignedBigNumber::operator/=(const UnsignedBigNumber& ubnDivisor){
+	if(&ubnDivisor != this){
+		Divide(ubnDivisor, this, NULL);
+	} else {
+		if(ubnDivisor == 0){
+			throw DIVISION_BY_ZERO();
+		}
+		operator=(1);
+	}
+	return *this;
+}
+inline UnsignedBigNumber& UnsignedBigNumber::operator/=(const DATA_DWORD dwDivisor){
+	Divide(dwDivisor, this, NULL);
+	return *this;
+}
+inline UnsignedBigNumber& UnsignedBigNumber::operator%=(const UnsignedBigNumber& ubnDivisor){
+	if(&ubnDivisor != this){
+		Divide(ubnDivisor, NULL, this);
+	} else {
+		if(ubnDivisor == 0){
+			throw DIVISION_BY_ZERO();
+		}
+		operator=(0);
+	}
+	return *this;
+}
+inline UnsignedBigNumber& UnsignedBigNumber::operator%=(const DATA_DWORD dwDivisor){
+	DATA_DWORD dwRemainder;
+	Divide(dwDivisor, NULL, &dwRemainder);
+	operator=(dwRemainder);
+	return *this;
+}
+
+#endif
