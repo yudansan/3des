@@ -4,16 +4,13 @@
 #include "stdio.h" 
 #include "stdlib.h"   
 #include "des.h"
-#include <intrin.h>
-#include <time.h>
 
 int main()   
 {      
     char *file_In = "in.txt";
     char *file_Out = "out.txt";
     char *file_tmp = "des.dat";
-    char *key = "key.txt";
-	clock_t a,b;   
+    char *key = "key.txt"; 
 	int ln;
 
     //DES加密  
