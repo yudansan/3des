@@ -1,4 +1,4 @@
-# Makefile 文件
+﻿# Makefile 文件
 d3des:d3des_start.o d3des.o
 	gcc -o d3des d3des_start.o d3des.o
 d3des_start.o:d3des_start.c d3des.h
